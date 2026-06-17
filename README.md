@@ -2,7 +2,7 @@
 
 给 **z.ai / 智谱 GLM Coding Plan** 用户的 Claude Code 状态栏。把模型、目录、context 用量和 GLM 套餐余量放在同一屏，不用切到控制台查额度。
 
-## 长这样
+## 安装完之后长这样
 
 状态栏两行，第一行是 Claude Code 会话信息，任何用户都通用；第二行是 GLM 用量。
 
@@ -24,9 +24,9 @@
 
 > 5 小时窗口按滑动窗口重置，每周额度按自然周（周一起算），MCP 按自然月重置。
 
-## 谁该用
+## 谁可以用
 
-直连 z.ai 或 open.bigmodel.cn 跑 Claude Code 的人——也就是把 `ANTHROPIC_BASE_URL` 指向智谱、用 GLM Coding Plan 的那种用法。状态栏复用 Claude Code 本身的鉴权（`ANTHROPIC_AUTH_TOKEN`），不依赖任何第三方服务的密钥。
+直连 z.ai 或 open.bigmodel.cn 使用 Claude Code 的朋友——也就是把 `ANTHROPIC_BASE_URL` 指向智谱、用 GLM Coding Plan 的那种用法。状态栏复用 Claude Code 本身的鉴权（`ANTHROPIC_AUTH_TOKEN`），不依赖任何第三方服务的密钥。
 
 ## 前置条件
 
@@ -74,7 +74,7 @@ export ANTHROPIC_AUTH_TOKEN="<你的智谱 API Key>"   # https://z.ai/manage-api
 
 脚本从 `ANTHROPIC_BASE_URL` 推断走国际版还是国内版，用 `ANTHROPIC_AUTH_TOKEN`（或 `ANTHROPIC_API_KEY`）调用用量接口。两者都没有时，第二行会提示去配置，不会影响第一行。
 
-## 顺便有个查询 skill
+## 模型用量查询 skill
 
 `SKILL.md` 注册的是 `/zai-usage` 这个 skill——在对话里输入 `/zai-usage`，会调同一个用量接口，返回一张带进度条的完整用量表（5 小时 / 每周 / MCP 明细）。状态栏看个大概，想看细节就用 skill。
 
@@ -88,8 +88,3 @@ cc-glm-statusbar/
 └── README.md
 ```
 
-## 设计说明
-
-这个项目从一个同时显示 ZenMux 账户信息和 GLM 用量的混合状态栏剥离而来。ZenMux 是代理 / 路由服务，它把 z.ai 当成后端之一，所以那版状态栏需要额外的 `ZENMUX_MANAGEMENT_KEY`、会请求 `zenmux.ai` 的账户接口。纯 z.ai 用户没有这些，只会被一堆"未配置密钥"的提示卡住。
-
-这里只保留两件事：Claude Code 会话本身的信息，和 z.ai 用量接口的解析。没有任何第三方依赖。
