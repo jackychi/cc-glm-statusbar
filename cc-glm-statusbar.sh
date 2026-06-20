@@ -34,7 +34,10 @@ cache_is_stale() {
     local file=$1 max_age=$2
     [ ! -f "$file" ] && return 0
     local now; now=$(date +%s)
-    local mtime; mtime=$(stat -f %m "$file" 2>/dev/null || stat -c %Y "$file" 2>/dev/null || echo 0)
+    # 顺序很重要:先 GNU/Linux 的 -c %Y,再 BSD/macOS 的 -f %m。
+    # BSD 的 -f 在 Linux 上表示「文件系统信息」且会向 stdout 写入垃圾值,
+    # 若放在前面会污染 mtime → 算术报错 → 缓存被误判为永不过期。
+    local mtime; mtime=$(stat -c %Y "$file" 2>/dev/null || stat -f %m "$file" 2>/dev/null || echo 0)
     [ $(( now - mtime )) -gt "$max_age" ]
 }
 
