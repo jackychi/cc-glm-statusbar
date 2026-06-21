@@ -59,6 +59,28 @@ make_usage_bar() {
     printf '%b' "${color}${bar}${RESET}"
 }
 
+# epoch 秒 → 指定格式 (GNU `date -d @` 与 BSD/macOS `date -r` 兼容)
+epoch_fmt() {
+    date -d "@$1" "$2" 2>/dev/null || date -r "$1" "$2" 2>/dev/null
+}
+
+# 下次重置时间: 毫秒时间戳 → 「今天显示 HH:MM, 跨天显示 MM/DD」; 无效则空
+fmt_reset() {
+    local ms=$1
+    case "$ms" in
+        ''|'null'|'0') return ;;
+    esac
+    local sec=$(( ms / 1000 ))
+    local today ts_day
+    today=$(date +%Y-%m-%d)
+    ts_day=$(epoch_fmt "$sec" +%Y-%m-%d)
+    if [ "$today" = "$ts_day" ]; then
+        epoch_fmt "$sec" +%H:%M
+    else
+        epoch_fmt "$sec" "+%m/%d %H:%M"
+    fi
+}
+
 # ── 读取 Claude Code 会话数据 ────────────────────────────────────────
 input=$(cat)
 
@@ -107,11 +129,22 @@ if cache_is_stale "$GIT_CACHE" "$GIT_CACHE_AGE"; then
 fi
 GIT_INFO=$(cat "$GIT_CACHE" 2>/dev/null || echo "")
 
+# ── 目录显示: 主仓库名（worktree 也只显示主仓库名, 与 git 分支名不重复）──
+# 非 git 目录则退化到 current_dir 的 basename
+DIR_DISPLAY="${DIR##*/}"
+if git rev-parse --git-dir > /dev/null 2>&1; then
+    MAIN_GITDIR=$(git rev-parse --git-common-dir 2>/dev/null)
+    [ -n "$MAIN_GITDIR" ] && MAIN_GITDIR=$(cd "$MAIN_GITDIR" 2>/dev/null && pwd)
+    if [ -n "$MAIN_GITDIR" ]; then
+        DIR_DISPLAY=$(basename "$(dirname "$MAIN_GITDIR")")
+    fi
+fi
+
 # ── Line 1: 会话信息 ────────────────────────────────────────────────
 GIT_PART=""
 [ -n "$GIT_INFO" ] && GIT_PART=" ${DIM}|${RESET} 🌿 ${GIT_INFO}"
 
-printf '%b' "${CYAN}${BOLD}[${MODEL_ID}]${RESET} 📁 ${DIR##*/}${GIT_PART} ${DIM}|${RESET} ${CTX_COLOR}${CTX_BAR}${RESET} ${USED_PCT}% ctx${CACHE_PART}\n"
+printf '%b' "${CYAN}${BOLD}[${MODEL_ID}]${RESET} 📁 ${DIR_DISPLAY}${GIT_PART} ${DIM}|${RESET} ${CTX_COLOR}${CTX_BAR}${RESET} ${USED_PCT}% ctx${CACHE_PART}\n"
 
 # ── Line 2: GLM Coding Plan 用量 ────────────────────────────────────
 # 识别区域（从 ANTHROPIC_BASE_URL 推断）和 API Key（复用 Claude Code 的鉴权）
@@ -153,6 +186,7 @@ if echo "$CACHED" | jq -e '.data.limits' > /dev/null 2>&1; then
     ZAI_LEVEL=$(echo "$CACHED" | jq -r '.data.level // "—"')
     # 按 unit 区分窗口: unit=3 → 5 小时 Token 额度, unit=6 → 每周 Token 额度
     ZAI_5H_PCT=$(echo "$CACHED" | jq -r '[.data.limits[] | select(.type=="TOKENS_LIMIT" and .unit==3)][0].percentage // 0')
+    ZAI_5H_RESET_MS=$(echo "$CACHED" | jq -r '[.data.limits[] | select(.type=="TOKENS_LIMIT" and .unit==3)][0].nextResetTime // 0')
     ZAI_WEEKLY_PCT=$(echo "$CACHED" | jq -r '[.data.limits[] | select(.type=="TOKENS_LIMIT" and .unit==6)][0].percentage // 0')
     # TIME_LIMIT = MCP 工具调用次数（月）
     ZAI_MCP_CUR=$(echo "$CACHED" | jq -r '[.data.limits[] | select(.type=="TIME_LIMIT")][0].currentValue // 0')
@@ -160,6 +194,11 @@ if echo "$CACHED" | jq -e '.data.limits' > /dev/null 2>&1; then
 
     ZAI_5H_BAR=$(make_usage_bar "$ZAI_5H_PCT")
     ZAI_WEEKLY_BAR=$(make_usage_bar "$ZAI_WEEKLY_PCT")
+
+    # 5 小时窗口下次重置时间 (今天显示 HH:MM, 否则 MM/DD)
+    ZAI_5H_RESET=$(fmt_reset "$ZAI_5H_RESET_MS")
+    ZAI_5H_RESET_PART=""
+    [ -n "$ZAI_5H_RESET" ] && ZAI_5H_RESET_PART=" ${DIM}↻${RESET}${ZAI_5H_RESET}"
 
     ZAI_MCP_PART=""
     if [ "$ZAI_MCP_MAX" -gt 0 ] 2>/dev/null; then
@@ -170,5 +209,5 @@ if echo "$CACHED" | jq -e '.data.limits' > /dev/null 2>&1; then
     ZAI_LEVEL_FMT=$(echo "$ZAI_LEVEL" | awk '{print toupper(substr($0,1,1)) tolower(substr($0,2))}')
     [ -z "$ZAI_LEVEL_FMT" ] && ZAI_LEVEL_FMT="—"
 
-    printf '%b' "🤖 ${BOLD}GLM ${ZAI_LEVEL_FMT}${RESET} ${DIM}|${RESET} 5h ${ZAI_5H_BAR} ${ZAI_5H_PCT}% ${DIM}·${RESET} W ${ZAI_WEEKLY_BAR} ${ZAI_WEEKLY_PCT}%${ZAI_MCP_PART}\n"
+    printf '%b' "🤖 ${BOLD}GLM ${ZAI_LEVEL_FMT}${RESET} ${DIM}|${RESET} 5h ${ZAI_5H_BAR} ${ZAI_5H_PCT}%${ZAI_5H_RESET_PART} ${DIM}·${RESET} W ${ZAI_WEEKLY_BAR} ${ZAI_WEEKLY_PCT}%${ZAI_MCP_PART}\n"
 fi
